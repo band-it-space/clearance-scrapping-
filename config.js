@@ -1,0 +1,8 @@
+export const MAX_PARALLEL_REQUESTS = 50;    // Обмеження кількості одночасних запитів
+
+export const SPREADSHEET_ID = "1FeDZ_9aSeQRXHsp-Xt-VOBAcYwYCELXPYnslBqbLvBE"; // "1eiTYM8MEXQ4tEyUM5u2WYa6JCgS5O3LOUjI5ubLkWnc"; //
+
+export const SCRAPINGBEE_API_KEY = "B6DQFZPD32JQXJVOASC7LHD9IGO8QCHW1PHD5JW9YL48ETWQWJBGQUL99IUF3QUEWGVSQQ2KS85842ET"
+
+export const GOOGLE_API_KEY = 'AIzaSyB5RbqZGr5sglVoHBH2q2mOKdrvuCFcKFs'; // 'AIzaSyBIv2bosWpjfPWOCMaGulaGaJCq0ydrGqk'; (My API)
+export const GOOGLE_CX = 'e504ebbfdd5004548';
