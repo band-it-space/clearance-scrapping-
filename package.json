@@ -8,7 +8,8 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node server.js",
+    "bigw": "node sites/bigw"
   },
   "dependencies": {
     "axios": "^1.9.0",
@@ -16,6 +17,7 @@
     "express": "^5.1.0",
     "google-auth-library": "^9.15.1",
     "google-spreadsheet": "^4.1.4",
-    "node-cron": "^4.1.0"
+    "node-cron": "^4.1.0",
+    "p-limit": "^6.2.0"
   }
 }
