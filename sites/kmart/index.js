@@ -1,192 +1,365 @@
-// import {processLinks} from './helper/getAllBrands.js'
-// import {fetchProductLinks} from './helper/getAllItems.js'
-// import {scrapeWithScrapingBee} from "./helper/scrapeWithScrapingBee.js";
-// import {processCategories} from "../../addons/process-categories.js";
-// import {cacheDerivedGTIN, restoreDerivedGTIN} from "../../addons/cache-data.js";
-// import {addToGTINQueue, processGTINQueue} from "../../addons/search-gtin.js";
-import {overwriteGoogleSheet} from "./../../google-sheets/overwrite-data.js";
+import { overwriteGoogleSheet } from "./../../google-sheets/overwrite-data.js";
+import axios from "axios";
+import * as cheerio from "cheerio";
+import {
+    URL,
+    QUERY_PARAMETERS,
+    GROUP_IDS,
+    STORE_NAME,
+    SHEET_ID,
+} from "./config.js";
 
-const SHEET_ID = "1o90_r9tc8QO-xI1npfAMD4G7voK6joCmfo6Nmy9vwzE";
 
-const categories = [
-    { "Home & Living Clearance": "https://www.kmart.com.au/category/home-and-living/home-and-living-clearance/"},
-    { "Womens Clearance": "https://www.kmart.com.au/category/women/womens-clearance/" },
-    { "Mens Clearance": "https://www.kmart.com.au/category/men/mens-clearance/" },
-    { "Kids & Baby Clearance": "https://www.kmart.com.au/category/kids-and-baby/kids-and-baby-clearance/" },
-    { "Toys Clearance": "https://www.kmart.com.au/category/toys/toys-clearance/" },
-    { "Clearance Beauty": "https://www.kmart.com.au/category/women/clearance-beauty/" },
-    { "Sports Clearance": "https://www.kmart.com.au/category/sport-and-outdoor/sports-clearance/" },
-    { "Technology Clearance": "https://www.kmart.com.au/category/tech/technology-clearance/" },
-    { "Online Exclusives Clearance": "https://www.kmart.com.au/category/online-exclusives/online-exclusives-clearance/" },
-];
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+
+async function getPageDetails(url, delayMs = 10000) {
+    let attempts = 0;
+    const maxAttempts = 6;
+
+    while (attempts < maxAttempts) {
+        try {
+            const { data: html } = await axios.get(url);
+            const $ = cheerio.load(html);
+
+            const ldJsonScript = $('script[type="application/ld+json"]').html();
+            if (!ldJsonScript) {
+                throw new Error(`LD+JSON not found on ${url}`);
+            }
+
+            let ldJson;
+            try {
+                ldJson = JSON.parse(ldJsonScript);
+            } catch (parseErr) {
+                throw new Error(`Invalid JSON-LD on ${url}: ${parseErr.message}`);
+            }
+
+            const description = await parseDescription(ldJson.description ?? "");
+
+            if (
+                typeof description.Description === "string" &&
+                description.Description.trim().endsWith("Additional Details")
+            ) {
+                description.Description = description.Description
+                    .slice(0, -"Additional Details".length)
+                    .trim();
+            }
+
+            const category = (await parseCategory($)) || "N/A";
+
+            return {
+                ...description,
+                "Original store Category": category,
+            };
+        } catch (error) {
+            attempts++;
+            if (attempts >= maxAttempts) {
+                console.error(`Failed to load ${url} after ${maxAttempts} attempts`);
+                return {
+                    Description: "N/A",
+                    Specification: "N/A",
+                    "Original store Category": "N/A",
+                };
+            }
+
+            if (error.response?.status === 502) {
+                console.warn(`Received 502 from ${url}, retrying in ${delayMs / 1000}s...`);
+            } else {
+                console.warn(`Error in getPageDetails for ${url}: ${error.message || error}`);
+            }
+
+            await delay(delayMs);
+        }
+    }
+}
+
+async function parseCategory($) {
+    try {
+        const breadcrumbs = [];
+        $('ol[itemtype="http://schema.org/BreadcrumbList"] li').each((_, el) => {
+            const text = $(el).text().trim();
+            if (text) breadcrumbs.push(text);
+        });
+        return breadcrumbs.join(" / ");
+    } catch (err) {
+        console.warn(`Error in parseCategory: ${err}`);
+        return "N/A";
+    }
+}
+
+async function parseDescription(descriptionHTML) {
+    try {
+        const $ = cheerio.load(`<div>${descriptionHTML}</div>`);
+        const nodes = $("div").contents().toArray();
+
+        const blocks = [];
+        let currentHeader = null;
+        let currentContent = [];
+
+        function isParagraphWithOnlyStrong(el) {
+            const $el = $(el);
+            return (
+                el.tagName?.toLowerCase() === "p" &&
+                $el.children().length === 1 &&
+                $el
+                    .children()
+                    .first()
+                    .prop("tagName")
+                    ?.toLowerCase() === "strong" &&
+                $el.text().trim() === $el.children().text().trim()
+            );
+        }
+
+        function isTopLevelStrong(el) {
+            return (
+                el.tagName?.toLowerCase() === "strong" &&
+                el.parent.tagName?.toLowerCase() === "div"
+            );
+        }
+
+        function pushBlock() {
+            if (currentHeader !== null || currentContent.length) {
+                blocks.push({
+                    header: currentHeader,
+                    content: [...currentContent],
+                });
+            }
+        }
+
+        for (const el of nodes) {
+            const $el = $(el);
+            const tagName = el.tagName?.toLowerCase() || "";
+
+            if (tagName === "em" || tagName === "br") {
+                continue;
+            }
+
+            const isHeaderTag =
+                isTopLevelStrong(el) || isParagraphWithOnlyStrong(el);
+
+            if (isHeaderTag) {
+                pushBlock();
+
+                if (isTopLevelStrong(el)) {
+                    currentHeader = $el.text().trim();
+                } else {
+                    currentHeader = $el.find("strong").text().trim();
+                }
+
+                currentContent = [];
+                continue;
+            }
+
+            if ($el.find("a").length > 0 || $el.is("a")) {
+                continue;
+            }
+
+            const text = $el.text().trim();
+            if (!text || text === ".") {
+                continue;
+            }
+
+            if (tagName === "ul" || tagName === "ol") {
+                $el.find("li").each((_, li) => {
+                    const liText = $(li).text().trim();
+                    if (liText) currentContent.push(liText);
+                });
+            } else {
+                currentContent.push(text);
+            }
+        }
+
+        pushBlock();
+
+        const lowerHeaders = blocks.map((b) =>
+            (b.header || "").toLowerCase()
+        );
+        let specIndex = lowerHeaders.findIndex((h) =>
+            h.includes("specification")
+        );
+        if (specIndex < 0) {
+            specIndex = lowerHeaders.findIndex((h) => h.includes("detail"));
+        }
+
+        let specText = "N/A";
+        if (specIndex >= 0) {
+            const b = blocks[specIndex];
+            specText = b.header ? b.header + "\n" : "";
+            specText += b.content.join("\n");
+        }
+
+        const descLines = [];
+        blocks.forEach((b, idx) => {
+            if (idx === specIndex) return;
+            if (b.header) descLines.push(b.header);
+            b.content.forEach((line) => descLines.push(line));
+            descLines.push("");
+        });
+
+        const descText =
+            descLines.join("\n").trim() || "N/A";
+
+        return {
+            Description: descText,
+            Specification: specText,
+        };
+    } catch (err) {
+        console.warn(`Error in parseDescription: ${err}`);
+        return {
+            Description: "N/A",
+            Specification: "N/A",
+        };
+    }
+}
+
+const parseProducts = async (GROUP_IDS) => {
+    const result = [];
+
+    for (const key in GROUP_IDS) {
+        if (!GROUP_IDS.hasOwnProperty(key)) continue;
+        const groupId = GROUP_IDS[key];
+        let resultsCount = 1;
+        let page = 1;
+        const categoryResults = [];
+
+        while (categoryResults.length < resultsCount) {
+            const pageUrl = `${URL}/${groupId}?${QUERY_PARAMETERS}&page=${page}`;
+            console.log(`Loading: ${pageUrl}`);
+
+            let response;
+            try {
+                response = await axios.get(pageUrl);
+            } catch (err) {
+                console.error(
+                    `Error loading page ${page} for category [${key}]: ${err.message}`
+                );
+                break;
+            }
+
+            try {
+                resultsCount =
+                    response.data.response.result_sources.token_match.count;
+            } catch (err) {
+                console.warn(
+                    `Could not get resultsCount on the page ${page}: ${err}`
+                );
+                break;
+            }
+
+            const pageItems = response.data.response.results || [];
+            const batchSize = 50;
+
+            for (let i = 0; i < pageItems.length; i += batchSize) {
+                const batch = pageItems.slice(i, i + batchSize);
+
+                const batchPromises = batch.map(async (item, index) => {
+                    try {
+                        console.log(
+                            `Scraping [${key}] item ${categoryResults.length + index + 1}/${
+                                resultsCount || "?"
+                            }`
+                        );
+
+                        const itemData = {
+                            URL: `https://www.kmart.com.au${item.data.url}` || "N/A",
+                            "Store Name": STORE_NAME,
+                            "Product SKU": item.data.id || "N/A",
+                            "Product Name": item.value || "N/A",
+                            "Product Brand": item.data.Brand || "N/A",
+                            "Original Price": item.data.SavePrice
+                                ? parseFloat(item.data.SavePrice.match(/\d+(\.\d+)?/)[0])
+                                : item.data.price,
+                            "Sale Price": item.data.SavePrice
+                                ? item.data.price
+                                : "N/A",
+                            "Current Price first seen on": "N/A",
+                            "Current price last seen on": "N/A",
+                            Images: item.data.image_url
+                                ? item.data.image_url.split("?")[0]
+                                : "N/A",
+                            "RRP?": "N/A",
+                        };
+
+                        const extraData = await getPageDetails(itemData.URL);
+                        return {
+                            ...itemData,
+                            ...extraData,
+                        };
+                    } catch (innerErr) {
+                        console.error(
+                            `Error scraping item in category [${key}], url=${item.data.url}: ${innerErr}`
+                        );
+                        return {
+                            URL: `https://www.kmart.com.au${item.data.url}` || "N/A",
+                            "Store Name": STORE_NAME,
+                            "Product SKU": item.data.id || "N/A",
+                            "Product Name": item.value || "N/A",
+                            "Product Brand": item.data.Brand || "N/A",
+                            "Original Price": item.data.SavePrice
+                                ? parseFloat(item.data.SavePrice.match(/\d+(\.\d+)?/)[0])
+                                : item.data.price,
+                            "Sale Price": item.data.SavePrice
+                                ? item.data.price
+                                : "N/A",
+                            "Current Price first seen on": "ERROR",
+                            "Current price last seen on": "ERROR",
+                            Images: item.data.image_url
+                                ? item.data.image_url.split("?")[0]
+                                : "N/A",
+                            "RRP?": "N/A",
+                            Description: "ERROR",
+                            Specification: "ERROR",
+                            "Original store Category": "ERROR",
+                        };
+                    }
+                });
+
+                let resolvedBatch;
+                try {
+                    resolvedBatch = await Promise.all(batchPromises);
+                } catch (allErr) {
+                    console.error(
+                        `Batch failed unexpectedly in category [${key}], page=${page}: ${allErr}`
+                    );
+                    resolvedBatch = [];
+                }
+
+                categoryResults.push(...resolvedBatch);
+            }
+
+            page++;
+        }
+
+        result.push(...categoryResults);
+    }
+
+    return result;
+};
 
 (async () => {
-    const allItems = [
-        {
-            "URL": "https://example.com/product-1",
-            "Store Name": "TechShop",
-            "Product SKU": "TS1001",
-            "Product Name": "Wireless Headphones",
-            "Product Brand": "SoundMax",
-            "Original Price": "150.00",
-            "Sale Price": "99.99",
-            "Current Price first seen on": "01/06/2025",
-            "Current price last seen on": "04/06/2025",
-            "Description": "High-quality wireless headphones with noise cancellation.",
-            "Specification": "Bluetooth 5.0, 20h battery, USB-C charging",
-            "Images": "https://example.com/images/product-1.jpg",
-            "Original store Category": "Electronics > Audio",
-            "RRP?": "Yes"
-        },
-        {
-            "URL": "https://example.com/product-2",
-            "Store Name": "HomePlus",
-            "Product SKU": "HP2002",
-            "Product Name": "Blender Pro 5000",
-            "Product Brand": "KitchenTech",
-            "Original Price": "120.00",
-            "Sale Price": "89.00",
-            "Current Price first seen on": "30/05/2025",
-            "Current price last seen on": "04/06/2025",
-            "Description": "Powerful blender suitable for smoothies, soups and more.",
-            "Specification": "500W motor, 1.5L jug, stainless steel blades",
-            "Images": "https://example.com/images/product-2.jpg",
-            "Original store Category": "Home & Kitchen > Appliances",
-            "RRP?": "No"
-        },
-        {
-            "URL": "https://example.com/product-3",
-            "Store Name": "GadgetWorld",
-            "Product SKU": "GW3030",
-            "Product Name": "Smartwatch X10",
-            "Product Brand": "TechWear",
-            "Original Price": "199.99",
-            "Sale Price": "149.99",
-            "Current Price first seen on": "28/05/2025",
-            "Current price last seen on": "04/06/2025",
-            "Description": "Multifunctional smartwatch with fitness tracking and notifications.",
-            "Specification": "Heart rate monitor, GPS, waterproof, AMOLED screen",
-            "Images": "https://example.com/images/product-3.jpg",
-            "Original store Category": "Wearables",
-            "RRP?": "Yes"
+    let allProducts = [];
+    try {
+        allProducts = await parseProducts(GROUP_IDS);
+        console.log(`Scraping completed. Total items: ${allProducts.length}`);
+    } catch (err) {
+        console.error(`Fatal error in parseProducts(): ${err}`);
+    } finally {
+        try {
+            console.log(`Saving ${allProducts.length} items to Google Sheets...`);
+            await overwriteGoogleSheet(SHEET_ID, allProducts);
+            console.log("Data saved to sheet.");
+        } catch (sheetErr) {
+            console.error(`Failed to save to Google Sheets: ${sheetErr}`);
+            try {
+                const fs = await import("fs/promises");
+                await fs.writeFile(
+                    "backup.json",
+                    JSON.stringify(allProducts, null, 2)
+                );
+                console.log("Backup written to backup.json");
+            } catch (fsErr) {
+                console.error(`Failed to write backup.json: ${fsErr}`);
+            }
         }
-    ];
-
-
-    // await fetchProductLinks(categories)
-
-    // const uniqueItems = await processCategories(allItems,
-    //     // [{
-    //     //     Category: 'Maquillage',
-    //     //     'Category Link': 'https://www.sephora.fr/shop/maquillage-c302/',
-    //     //     Products: [
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/hd-skin-perfecting-pressed-powder-%E2%80%93-poudre-pressee-ultra-floutante-imperceptible-P10061607.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/bloom-palette---palette-de-fards-a-paupiere-P1000206199.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/spray-fixateur-de-maquillage---tenue-16h--1-.-sans-transfert-P10023031.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/badgal-bounce-voluminizing-mascara-P10061529.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/surrealskin%E2%84%A2-soft-setting-spray---spray-fixateur-P10061429.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/lash-idole-flutter-extension---mascara-longueur-extreme-P1000205561.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/lights--camera--lashes%E2%84%A2-platinum-mascara---mascara-P10061299.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/fluff-et-fix-brow-wax---cire-sourcils-texturisante-et-fixante-P10059943.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/airbrush-setting-spray---spray-fixateur-de-maquillage-P10018525.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/airbrush-setting-spray---spray-fixateur-de-maquillage-P10018525.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/cc-red-correct---soin-illuminateur-correcteur-rougeur-P3455023.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/cc-red-correct---soin-illuminateur-correcteur-rougeur-P3455023.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/mist-et-fix-spray---brume-fixatrice-P10047979.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/you-mist---spray-fixateur-maquillage-P10061478.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/instant-bronzing-drops---gouttes-bronzantes-P10061564.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/cc-creme-a-la-centella-asiatica-P1293015.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/cc-creme-a-la-centella-asiatica-P1293015.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/soft-pinch---liquid-blush-in-hope-P10053951.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/soft-pinch---liquid-blush-in-hope-P10053951.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/soft-pinch---liquid-blush-in-hope-P10053951.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/soft-pinch---liquid-blush-in-hope-P10053951.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/hella-thicc---volumizing-mascara-P10049348.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/hella-thicc---volumizing-mascara-P10049348.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/hd-skin-perfecting-loose-powder-%E2%80%93-poudre-libre-ultra-floutante-imperceptible-P10061605.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/mascara-volume-effet-faux-cils---coffret-cadeau-femme-P1000205999.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/hd-skin-face-essentials---palette-teint-P10053928.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/badgal-bang----mascara-volume-renversant---P3228024.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/badgal-bang----mascara-volume-renversant---P3228024.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/badgal-bang----mascara-volume-renversant---P3228024.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/badgal-bang----mascara-volume-renversant---P3228024.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/mega-mix-palette---mega-palette-de-teintes-P10061352.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/mega-mix-palette---mega-palette-de-teintes-P10061352.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/mega-mix-palette---mega-palette-de-teintes-P10061352.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/mega-mix-palette---mega-palette-de-teintes-P10061352.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/lash-clash---mascara-volume-extreme-P10024132.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/lash-clash---mascara-volume-extreme-P10024132.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/lash-clash---mascara-volume-extreme-P10024132.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/make-it-bronze---bronzer-en-stick-P10055782.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/make-it-bronze---bronzer-en-stick-P10055782.html",
-    //     //         "https://www.sephora.fr/https://www.sephora.fr/p/make-it-bronze---bronzer-en-stick-P10055782.html",
-    //     //     ]
-    //     // }],
-    //     false, false);
-    //
-    // const itemsData = await scrapeWithScrapingBee(uniqueItems
-    //     // [
-    //     //     {
-    //     //         Category: 'Parfum',
-    //     //         'Category Link': 'https://www.sephora.fr/shop/parfum-c301/',
-    //     //         Products: [
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/miss-dior-parfum-roller-pearl-P10060517.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/atelier-des-fleurs-orchidee-de-minuit----eau-de-parfum-P10060549.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/la-panthere-elixir---eau-de-parfum-intense-P1000204975.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p-Kayali_Mix_Match_Bundle_Trio_Sparkling_Lychee_Juicy_Apple_Pistachio_Gelato.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/s%C3%AC-passione---eau-de-parfum-intense-P1000203470.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/coffret-decouverte-blu-mediterraneo---eau-de-toilette-P10017893.html'
-    //     //         ]
-    //     //     },
-    //     //     {
-    //     //         Category: 'Maquillage',
-    //     //         'Category Link': 'https://www.sephora.fr/shop/maquillage-c302/',
-    //     //         Products: [
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/charlotte-s-magic-water-cream-P10052795.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/veil-translucent-setting-powder---poudre-fixante-translucide-P3381008.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/size-up---mascara-volume-extra-large-immediat---format-voyage-P3950141.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/eponge-multi-textures---eponge-maquillage-P3814099.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/on-the-glow-blush---baton-hydratant-teinte-P4122090.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/luxury-palette-the-rebel---palette-de-fards-a-paupieres-504414.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/pout-preserve-peptide-lip-treatment-P10047536.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/pro-brow-definer---crayon-a-sourcils-P1000203188.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/gimme-brow---le-mascara-pour-sourcils-P2578001.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/maracuja-juicy-lip---gloss-P10013538.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/pro-filt-r---fond-de-teint-poudre-mat-P10013140.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/soft-pinch-set---mini-coffret-levres-et-joues-P10061422.html',
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/small-eye-shadow---fard-a-paupieres-P10023645.html'
-    //     //         ]
-    //     //     },
-    //     //     {
-    //     //         Category: 'Soin Visage',
-    //     //         'Category Link': 'https://www.sephora.fr/shop/soin-visage-c303/',
-    //     //         Products: [
-    //     //             'https://www.sephora.fr/https://www.sephora.fr/p/facial-fuel-energizing-scrub---exfoliant-visage-energisant-pour-homme-P10011693.html'
-    //     //         ]
-    //     //     }
-    //     // ]
-    //     // [
-    //     //     {
-    //     //         Category: 'Parfum',
-    //     //         'Category Link': 'https://www.sephora.fr/shop/parfum-c301/',
-    //     //         Products: [
-    //     //             'https://www.sephora.fr/p/libre---eau-de-parfum-P3800005.html'
-    //     //             // 'https://www.sephora.fr/https://www.sephora.fr/p/miss-dior-parfum---notes-fleuries--fruitees-et-boisees-intenses-P1000202930.html',
-    //     //             // 'https://www.sephora.fr/https://www.sephora.fr/p/dior-homme-parfum---notes-ambrees--boisees-et-fleuries-P10061496.html',
-    //     //             // 'https://www.sephora.fr/https://www.sephora.fr/p/aqua-allegoria-rosa-verde---eau-de-toilette-P1000206012.html',
-    //     //             // 'https://www.sephora.fr/https://www.sephora.fr/p/miss-dior-parfum-mini-miss-parfum-solide---parfum-en-stick-sans-alcool-P10061499.html',
-    //     //             // 'https://www.sephora.fr/https://www.sephora.fr/p/coco-mademoiselle---eau-de-parfum-P96042.html',
-    //     //             // 'https://www.sephora.fr/https://www.sephora.fr/p/kayali-vanilla-28---eau-de-parfum-P3551017.html',
-    //     //             // 'https://www.sephora.fr/https://www.sephora.fr/p/bleu-de-chanel---eau-de-parfum-P1922003.html',
-    //     //             // 'https://www.sephora.fr/https://www.sephora.fr/p/yum-boujee-marshmallow--81---eau-de-parfum-intense-P10061050.html',
-    //     //             // 'https://www.sephora.fr/https://www.sephora.fr/p/brazilian-crush-body-fragrance-mist---brume-parfumee-pour-le-corps-P3347006.html',
-    //     //             // 'https://www.sephora.fr/https://www.sephora.fr/p-sdj_Duo_Brumes_Parfumees.html',
-    //     //         ]
-    //     //     },
-    //     // ]
-    // )
-
-
-
-    await overwriteGoogleSheet(SHEET_ID, allItems)
-})()
+    }
+})();
