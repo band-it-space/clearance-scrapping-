@@ -25,16 +25,14 @@ export const GROUP_IDS = {
     "Online Exclusives Clearance": "af58383950ba2147e523d9511df3c203"
 };
 
-const PAGE_URLS = [
-    { "Home & Living Clearance": "https://www.kmart.com.au/category/home-and-living/home-and-living-clearance/"},
-    { "Womens Clearance": "https://www.kmart.com.au/category/women/womens-clearance/" },
-    { "Mens Clearance": "https://www.kmart.com.au/category/men/mens-clearance/" },
-    { "Kids & Baby Clearance": "https://www.kmart.com.au/category/kids-and-baby/kids-and-baby-clearance/" },
-    { "Toys Clearance": "https://www.kmart.com.au/category/toys/toys-clearance/" },
-    { "Clearance Beauty": "https://www.kmart.com.au/category/women/clearance-beauty/" },
-    { "Sports Clearance": "https://www.kmart.com.au/category/sport-and-outdoor/sports-clearance/" },
-    { "Technology Clearance": "https://www.kmart.com.au/category/tech/technology-clearance/" },
-    { "Online Exclusives Clearance": "https://www.kmart.com.au/category/online-exclusives/online-exclusives-clearance/" },
-];
-
-console.log()
+// Proxy settings https://www.webshare.io
+export const USE_PROXY = false;
+export const PROXY_PARAMS = {
+    protocol: "http",
+        host: "p.webshare.io",
+        port: 80,
+        auth: {
+            username: "imfyqfpr-rotate",
+            password: "tv3owtzx41sj",
+    },
+};
