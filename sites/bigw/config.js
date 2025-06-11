@@ -1,15 +1,15 @@
 export const URL_BIGW = "https://api.bigw.com.au/";
 export const CATEGORY_IDS = {
     //"Home & Appliances": "65", //3129
-    //Toys: "68", //1552
+    Toys: "68", //1552
     // "Womens Clothing": "69", //661
     // "Mens Clothing": "66", //559
     // "Baby Clothing & Nursery": "61", //426
-    "Kids Clothing": "80", //454
+    //"Kids Clothing": "80", //454
     //Books: "78", //2
     // Gaming: "6412",
     // "Tech & Audio": "63", //768
-    "Sports & Leisure": "67", //446
+    //"Sports & Leisure": "67", //446
     //Party: "72", // 104
     // "Gift Ideas": "83", //738
     // "Health & Beauty": "62", //2000+

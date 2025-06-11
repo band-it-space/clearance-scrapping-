@@ -19,10 +19,11 @@ export const getProductDetailsBigw = async (productId) => {
                 timeout: 10000,
             }
         );
-        
-        await delay(2000);
 
-        return data;
+        await delay(2000);
+        console.log(data.products[productId].name);
+
+        return data.products[productId].name;
     } catch (err) {
         console.error(
             `❌ Failed to get details for ${productId}: ${err.message}`
@@ -30,3 +31,7 @@ export const getProductDetailsBigw = async (productId) => {
         return null;
     }
 };
+
+// (async () => {
+//     const res = await getProductDetailsBigw(6006803);
+// })();
