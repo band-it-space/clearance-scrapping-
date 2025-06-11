@@ -19,9 +19,8 @@ export const getProductDetailsBigw = async (productId) => {
                 timeout: 10000,
             }
         );
-        console.log(22);
-
-        await delay(2500);
+        
+        await delay(2000);
 
         return data;
     } catch (err) {

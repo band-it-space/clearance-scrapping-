@@ -6,7 +6,7 @@ import pLimit from "p-limit";
 import { URL_BIGW } from "./config.js";
 import { getProductDetailsBigw } from "./get-product-details-bigw.js";
 
-const limit = pLimit(10);
+const limit = pLimit(20);
 
 export const getProductsFromCategoriesBigw = async (categoryId) => {
     let productsData = [];
@@ -79,7 +79,6 @@ export const getProductsFromCategoriesBigw = async (categoryId) => {
                 },
             }
         );
-        console.log(1);
 
         const results = data?.organic?.results || [];
 
@@ -88,7 +87,7 @@ export const getProductsFromCategoriesBigw = async (categoryId) => {
         if (results.length < 150) isResult = false;
         else page += 1;
     }
-    console.log(`Page:${page}`);
+    console.log(`Page:${page} on category: ${categoryId}`);
     const productIds = productsData
         .map((p) => p.identifiers?.articleId)
         .filter(Boolean);
@@ -96,8 +95,10 @@ export const getProductsFromCategoriesBigw = async (categoryId) => {
     const detailedProducts = await Promise.all(
         productIds.map((id) => limit(() => getProductDetailsBigw(id)))
     );
-    console.log(detailedProducts.length);
-    const outputPath = path.resolve(`bigw-${categoryId}.json`);
+    console.log(
+        `Total results on category: ${categoryId} is ${detailedProducts.length} `
+    );
+    const outputPath = path.resolve(`sites/bigw/bigw-${categoryId}.json`);
     fs.writeFileSync(outputPath, JSON.stringify(detailedProducts, null, 2));
     console.log(`✅ Saved ${detailedProducts.length} items to ${outputPath}`);
 };
