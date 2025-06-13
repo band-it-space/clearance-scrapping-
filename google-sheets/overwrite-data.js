@@ -1,7 +1,7 @@
 import { GoogleSpreadsheet } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
 
-import credentials from "./credentials.json" assert { type: "json" };
+import credentials from "./credentials.json" with { type: "json" };
 import {getDate} from "../addons/get-today-date.js";
 
 
@@ -20,6 +20,7 @@ const FIXED_HEADERS = [
     "Images",
     "Original store Category",
     "RRP?",
+    "EAN",
 ];
 
 

@@ -1,16 +1,20 @@
-import { CATEGORY_IDS, URL_BIGW } from "./config.js";
+import { CATEGORY_IDS, URL_BIGW, SHEET_ID } from "./config.js";
 import { getProductsFromCategoriesBigw } from "./get-products-from-category-bigw.js";
+import { overwriteGoogleSheet } from "./../../google-sheets/overwrite-data.js";
 
 (async () => {
+    let allProducts = [];
+
     await Promise.all(
         Object.entries(CATEGORY_IDS).map(
             async ([categoryTitle, categoryId]) => {
                 try {
-                    await getProductsFromCategoriesBigw(categoryId);
-                    console.log(`✅ Done for category: ${categoryId}`);
+                    const categoryProducts = await getProductsFromCategoriesBigw(categoryId);
+                    allProducts.push(...categoryProducts);
+                    console.log(`Done for category: ${categoryId}, products: ${categoryProducts.length}`);
                 } catch (err) {
                     console.error(
-                        `❌ Error in category ${categoryId}:`,
+                        `Error category ${categoryId}:`,
                         err.message
                     );
                 }
@@ -18,5 +22,12 @@ import { getProductsFromCategoriesBigw } from "./get-products-from-category-bigw
         )
     );
 
-    console.log("🎉 All categories processed!");
+    console.log(`Total products collected: ${allProducts.length}`);
+    
+    if (allProducts.length > 0) {
+        await overwriteGoogleSheet(SHEET_ID, allProducts);
+        console.log("All products saved to Google Sheet");
+    }
+
+    console.log("All categories processed");
 })();

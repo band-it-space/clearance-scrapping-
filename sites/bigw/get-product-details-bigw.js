@@ -1,37 +1,55 @@
 import axios from "axios";
 import { URL_BIGW } from "./config.js";
 import { delay } from "../../addons/index.js";
+import {
+  specificationFormating,
+  imagesFormating,
+  toSlug,
+  categotysFormating,
+} from "./helpers.js";
 
-export const getProductDetailsBigw = async (productId) => {
-    try {
-        console.log(`${URL_BIGW}api/products/v0/product/${productId}`);
+export const getProductDetailsBigw = async (productId, prices) => {
+  try {
+    // console.log(`${URL_BIGW}api/products/v0/product/${productId}`);
 
-        const { data } = await axios.get(
-            `${URL_BIGW}/api/products/v0/product/${productId}`,
-            {
-                headers: {
-                    referer: "https://www.bigw.com.au/",
-                    origin: "https://www.bigw.com.au",
-                    "user-agent":
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-                    "accept-language": "en-US,en;q=0.9",
-                },
-                timeout: 10000,
-            }
-        );
+    const { data } = await axios.get(
+      `${URL_BIGW}/api/products/v0/product/${productId}`,
+      {
+        headers: {
+          referer: "https://www.bigw.com.au/",
+          origin: "https://www.bigw.com.au",
+          "user-agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+          "accept-language": "en-US,en;q=0.9",
+        },
+        timeout: 10000,
+      }
+    );
 
-        await delay(2000);
-        console.log(data.products[productId].name);
+    await delay(2000);
+    // console.log(data.products[productId].name);
 
-        return data.products[productId].name;
-    } catch (err) {
-        console.error(
-            `❌ Failed to get details for ${productId}: ${err.message}`
-        );
-        return null;
-    }
+    return {
+      URL: toSlug(data.products[productId].name, productId),
+      "Store Name": "Bigw",
+      EAN: data.products[productId].information.ean,
+      "Product Name": data.products[productId].name,
+      "Product Brand": data.products[productId].information.brand,
+      "Original Price": "$" + (prices.wasPrice.cents / 100).toFixed(2),
+      "Sale Price": "$" + (prices.price.cents / 100).toFixed(2),
+      Description: data.products[productId].information.description,
+      Specification: specificationFormating(
+        data.products[productId].information.specifications
+      ),
+      Images:
+        "https://www.bigw.com.au/" +
+        data.products[productId].assets.images[0].sources[0].url,
+      "Original store Category": categotysFormating(
+        data.products[productId].categories
+      ),
+    };
+  } catch (err) {
+    console.error(`Failed to get details for ${productId}: ${err.message}`);
+    return null;
+  }
 };
-
-// (async () => {
-//     const res = await getProductDetailsBigw(6006803);
-// })();
