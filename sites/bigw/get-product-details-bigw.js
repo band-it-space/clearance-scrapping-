@@ -3,7 +3,7 @@ import { URL_BIGW } from "./config.js";
 import { delay } from "../../addons/index.js";
 import {
   specificationFormating,
-  imagesFormating,
+  descriptionFormating,
   toSlug,
   categotysFormating,
 } from "./helpers.js";
@@ -33,11 +33,14 @@ export const getProductDetailsBigw = async (productId, prices) => {
       URL: toSlug(data.products[productId].name, productId),
       "Store Name": "Bigw",
       EAN: data.products[productId].information.ean,
+      "Product SKU": "N/A",
       "Product Name": data.products[productId].name,
+      "Current Price first seen on": "N/A",
+      "Current price last seen on": "N/A",
       "Product Brand": data.products[productId].information.brand,
-      "Original Price": "$" + (prices.wasPrice.cents / 100).toFixed(2),
-      "Sale Price": "$" + (prices.price.cents / 100).toFixed(2),
-      Description: data.products[productId].information.description,
+      "Original Price": (prices.wasPrice.cents / 100),
+      "Sale Price": (prices.price.cents / 100),
+      Description: descriptionFormating(data.products[productId].information.description),
       Specification: specificationFormating(
         data.products[productId].information.specifications
       ),

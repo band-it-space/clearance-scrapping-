@@ -6,7 +6,7 @@ export const CATEGORY_IDS = {
     "Mens Clothing": "66", //559
     "Baby Clothing & Nursery": "61", //426
     "Kids Clothing": "80", //454
-    Books: "78", //2
+    Books: "78", //27
     Gaming: "6412",
     "Tech & Audio": "63", //768
     "Sports & Leisure": "67", //446

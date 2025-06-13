@@ -1,3 +1,5 @@
+import { decode } from "html-entities"
+
 export const specificationFormating = (specifications) => {
   let res = "";
 
@@ -30,12 +32,14 @@ export const toSlug = (name, productId) => {
   return 'https://www.bigw.com.au/product/' + slug + '/p/' + productId
 }
 
-export const categotysFormating = (categotys) => {
-  let res = ""
+export const categotysFormating = (categories) => {
+  return categories.map(c => c.name).join(" / ");
+};
 
-  categotys.map(categoty => {
-    res += categoty.name + "\n"
-  })
-  
-  return res
+
+export const descriptionFormating = (description) => {
+  const noTags = description.replace(/<[^>]*>/g, '')
+
+  return decode(noTags)
 }
+

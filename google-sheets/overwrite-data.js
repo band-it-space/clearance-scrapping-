@@ -20,7 +20,7 @@ const FIXED_HEADERS = [
     "Images",
     "Original store Category",
     "RRP?",
-    "EAN",
+    // "EAN",
 ];
 
 
