@@ -33,20 +33,20 @@ export const getProductDetailsBigw = async (productId, prices) => {
       URL: toSlug(data.products[productId].name, productId),
       "Store Name": "Bigw",
       EAN: data.products[productId].information.ean,
-      "Product SKU": "N/A",
+      "Product SKU": productId,
       "Product Name": data.products[productId].name,
       "Current Price first seen on": "N/A",
       "Current price last seen on": "N/A",
       "Product Brand": data.products[productId].information.brand,
       "Original Price": (prices.wasPrice.cents / 100),
       "Sale Price": (prices.price.cents / 100),
-      Description: descriptionFormating(data.products[productId].information.description),
+      Description: descriptionFormating(data.products[productId].information.description, data.products[productId].information.summary),
       Specification: specificationFormating(
         data.products[productId].information.specifications
       ),
       Images:
         "https://www.bigw.com.au/" +
-        data.products[productId].assets.images[0].sources[0].url,
+        data.products[productId].assets.images[0].sources[2]?.url,
       "Original store Category": categotysFormating(
         data.products[productId].categories
       ),

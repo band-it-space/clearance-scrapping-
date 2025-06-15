@@ -1,6 +1,7 @@
 import { CATEGORY_IDS, URL_BIGW, SHEET_ID } from "./config.js";
 import { getProductsFromCategoriesBigw } from "./get-products-from-category-bigw.js";
 import { overwriteGoogleSheet } from "./../../google-sheets/overwrite-data.js";
+import {getUniqueById} from "./helpers.js"
 
 (async () => {
     let allProducts = [];
@@ -25,7 +26,10 @@ import { overwriteGoogleSheet } from "./../../google-sheets/overwrite-data.js";
     console.log(`Total products collected: ${allProducts.length}`);
     
     if (allProducts.length > 0) {
-        await overwriteGoogleSheet(SHEET_ID, allProducts);
+        console.log(allProducts.length)
+        const unique = getUniqueById(allProducts)
+        console.log(unique.length)
+        await overwriteGoogleSheet(SHEET_ID, unique);
         console.log("All products saved to Google Sheet");
     }
 
