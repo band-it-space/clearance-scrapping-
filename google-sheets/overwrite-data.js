@@ -19,6 +19,7 @@ const FIXED_HEADERS = [
     "Specification",
     "Images",
     "Original store Category",
+    "Size",
     "RRP?",
     // "EAN",
 ];

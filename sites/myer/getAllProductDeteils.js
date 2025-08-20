@@ -19,6 +19,8 @@ const fetchSingleProduct = async (slug) => {
     const data = JSON.parse(scriptTag);
     const productData = data.props.pageProps.dehydratedState.queries[3].state.data;
 
+    // console.log(productData.variants)
+
     return {
       URL: myerUrl + 'p/' + slug,
       "Store Name": "Myer",
@@ -31,8 +33,9 @@ const fetchSingleProduct = async (slug) => {
       "Current price last seen on": "N/A",
       "Description": descriptionFormating(productData.attributes, productData.longDescription) || "N/A",
       "Specification": "N/A",
-      "Images": myerImgUrl + fixImagePath(productData.media[0]?.baseUrl) || "N/A",
+      "Images": productData.media?.map(m => myerImgUrl + fixImagePath(m.baseUrl)).join('|') || "N/A",
       "Original store Category": productData.categoryUri,
+      "Size": productData.variants.map(item => item.size).join(',') || "N/A"
     };
   } catch (err) {
     console.error(`Error for slug ${slug}:`, err.message);
@@ -41,18 +44,22 @@ const fetchSingleProduct = async (slug) => {
 };
 
 export const fetchProductDataBySlugs = async (slugs) => {
-  const chunkSize = 40;
+  const chunkSize = 50;
   const results = [];
 
   for (let i = 0; i < slugs.length; i += chunkSize) {
     const chunk = slugs.slice(i, i + chunkSize);
     const chunkResults = await Promise.all(chunk.map(fetchSingleProduct));
     results.push(...chunkResults.filter(Boolean));
+    console.log('results: ', results.length)
+    console.log('results: ', results)
 
     if (i + chunkSize < slugs.length) {
-      await delay(2000);
+      await delay(1500);
     }
   }
 
   return results;
 };
+
+// fetchProductDataBySlugs(['verali-gabe-tall-boots-in-black'])

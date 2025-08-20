@@ -10,6 +10,7 @@ import {overwriteGoogleSheet} from "../../google-sheets/overwrite-data.js"
 
     console.log(allSlugs.length)
 
+    //['verali-gabe-tall-boots-in-black', 'grab-denim-denim-long-sleeve-mini-shirt-dress-in-light-blue']
     const allProducts = await fetchProductDataBySlugs(allSlugs)
 
     console.log(allProducts.length)
